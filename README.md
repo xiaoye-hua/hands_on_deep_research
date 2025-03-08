@@ -109,6 +109,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - User Guides: `docs/guides/`
 - API Documentation: `docs/api/`
+- Logging System: `docs/logging.md`
 
 ## 🧪 Testing
 

@@ -15,13 +15,19 @@ class CodeAgent(BaseAgent):
             You response should be in the following format:
             <code>your linux command</code>
             """
+            self.logger.debug("Using default prompt template for CodeAgent")
     
     def run(self, query: str) -> dict:
+        self.logger.info(f"Running CodeAgent with query: {query[:50]}...")
         prompt = self._get_prompt(query)
+        self.logger.debug(f"Generated prompt: {prompt[:100]}...")
+        
         linux_cmd = self.query_llm(prompt)
+        self.logger.info(f"Received command from LLM: {linux_cmd}")
         
         # Handle empty commands
         if not linux_cmd or linux_cmd.strip() == "":
+            self.logger.warning("Empty command received from LLM")
             return {
                 "stdout": "",
                 "stderr": "Error: Empty command received from LLM",
@@ -29,7 +35,14 @@ class CodeAgent(BaseAgent):
                 'linux_cmd': linux_cmd
             }
         try:
+            self.logger.info(f"Executing command: {linux_cmd}")
             run_result = self._execute_linux_command(linux_cmd)
+            self.logger.info(f"Command execution completed with return code: {run_result['returncode']}")
+            self.logger.debug(f"Command stdout: {run_result['stdout'][:100]}...")
+            
+            if run_result["returncode"] != 0:
+                self.logger.warning(f"Command failed with stderr: {run_result['stderr']}")
+                
             return {
                 "success": True,
                 "result": run_result,
@@ -39,6 +52,7 @@ class CodeAgent(BaseAgent):
                 'linux_cmd': linux_cmd
             }
         except Exception as e:
+            self.logger.error(f"Error executing command: {str(e)}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
@@ -50,8 +64,15 @@ class CodeAgent(BaseAgent):
     
     def query_llm(self, prompt: str) -> str:
         model_id = "gpt-3.5-turbo"
+        self.logger.info(f"Querying LLM with model: {model_id}")
+        self.logger.debug(f"LLM prompt: {prompt[:100]}...")
+        
         response = llm_call(prompt=prompt, model=model_id)
-        return extract_xml(response, "code")
+        self.logger.debug(f"Raw LLM response: {response[:100]}...")
+        
+        extracted = extract_xml(response, "code")
+        self.logger.debug(f"Extracted command: {extracted}")
+        return extracted
     
     def _execute_linux_command(self, command: str) -> dict:
         """
@@ -65,6 +86,7 @@ class CodeAgent(BaseAgent):
         """
         # Handle empty commands
         if not command or command.strip() == "":
+            self.logger.warning("Attempted to execute empty command")
             return {
                 "stdout": "",
                 "stderr": "Error: Empty command",
@@ -72,13 +94,16 @@ class CodeAgent(BaseAgent):
             }
             
         try:
+            self.logger.debug(f"Running subprocess: {command}")
             result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            self.logger.debug(f"Subprocess completed with return code: {result.returncode}")
             return {
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "returncode": result.returncode
             }
         except Exception as e:
+            self.logger.error(f"Exception in subprocess: {str(e)}", exc_info=True)
             # Re-raise the exception to be handled by the caller
             raise e 
     
