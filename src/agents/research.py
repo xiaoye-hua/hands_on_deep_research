@@ -13,9 +13,11 @@ from typing import Any, Dict, List, Optional, Set, Union
 import aiohttp
 import openai
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 
 from src.agents.base import BaseAgent
-from src.utils.api import get_api_key
+from src.utils.api import get_api_key, make_request
+from src.data.web import fetch_and_parse_webpage_sync
 
 # Load environment variables
 load_dotenv()
@@ -228,7 +230,7 @@ class ResearchAgent(BaseAgent):
         return response
 
     async def search_web(self, query: str) -> List[Dict[str, str]]:
-        """Search the web for information.
+        """Search the web for information using DuckDuckGo.
 
         Args:
             query: The search query.
@@ -236,12 +238,96 @@ class ResearchAgent(BaseAgent):
         Returns:
             A list of search results, each containing a URL and snippet.
         """
-        # This is a placeholder for actual search implementation
-        # In a real implementation, this would call a search API like Google or Bing
-        logger.info(f"Searching web for: {query}")
+        try:
+            logger.info(f"Searching web for: {query}")
+            
+            # Use DuckDuckGo Lite for searching
+            search_url = "https://lite.duckduckgo.com/lite"
+            
+            # Prepare headers to mimic a browser
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+            }
+            
+            # Prepare parameters
+            params = {
+                "q": query,  # The search query
+                "kl": "us-en"  # Region and language
+            }
+            
+            # Make the request using aiohttp for async operation
+            async with aiohttp.ClientSession() as session:
+                async with session.get(search_url, params=params, headers=headers, timeout=self.timeout) as response:
+                    if response.status != 200:
+                        logger.warning(f"Failed to get search results: HTTP {response.status}")
+                        return self._get_fallback_results(query)
+                    
+                    # Get the response content
+                    html_content = await response.text()
+            
+            # Parse the HTML response using BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Extract search results
+            results = []
+            # DuckDuckGo Lite results are in a simple table format
+            # The results are in alternating rows with URLs and snippets
+            links = soup.select('a.result-link')
+            
+            for link in links:
+                # Get the URL
+                url = link.get('href')
+                
+                # Skip if no URL was found
+                if not url:
+                    continue
+                
+                # Find the snippet (description)
+                snippet_element = link.find_next('td', class_='result-snippet')
+                snippet = snippet_element.get_text(strip=True) if snippet_element else ""
+                
+                # Find the title
+                title = link.get_text(strip=True)
+                
+                # Add to results
+                results.append({
+                    "url": url,
+                    "title": title,
+                    "snippet": snippet
+                })
+                
+                # Limit to 10 results maximum
+                if len(results) >= 10:
+                    break
+            
+            logger.info(f"Found {len(results)} search results for query: {query}")
+            
+            # If no results were found, use fallback
+            if not results:
+                logger.warning(f"No search results found for query: {query}")
+                return self._get_fallback_results(query)
+                
+            return results
+        
+        except Exception as e:
+            logger.error(f"Error during web search: {e}")
+            return self._get_fallback_results(query)
+    
+    def _get_fallback_results(self, query: str) -> List[Dict[str, str]]:
+        """Get fallback search results when the actual search fails.
+
+        Args:
+            query: The original search query.
+
+        Returns:
+            A list of dummy search results.
+        """
         return [
             {
                 "url": f"https://example.com/result-{i}",
+                "title": f"Example Result {i}",
                 "snippet": f"Example search result {i} for query: {query}",
             }
             for i in range(3)
@@ -282,9 +368,26 @@ class ResearchAgent(BaseAgent):
                     
                     self.visited_urls.add(url)
                     
-                    # In a real implementation, fetch and process the web page content
-                    # For this example, we'll use the snippet as content
-                    processed_result = await self.process_web_content(url, result["snippet"])
+                    try:
+                        # Fetch the actual web page content
+                        # Log that we're fetching the webpage
+                        logger.info(f"Fetching content from: {url}")
+                        
+                        # Fetch and parse the webpage
+                        webpage_data = fetch_and_parse_webpage_sync(url, timeout=self.timeout)
+                        
+                        # Construct content from title, description, and text
+                        content = f"Title: {webpage_data.get('title', '')}\n\n"
+                        content += f"Description: {webpage_data.get('description', '')}\n\n"
+                        content += f"Content:\n{webpage_data.get('text', '')}"
+                        
+                        # Process the content
+                        processed_result = await self.process_web_content(url, content)
+                    except Exception as e:
+                        # If fetching fails, use the snippet as a fallback
+                        logger.warning(f"Failed to fetch content from {url}: {e}")
+                        logger.info(f"Using snippet as fallback for {url}")
+                        processed_result = await self.process_web_content(url, result["snippet"])
                     
                     if processed_result["is_useful"]:
                         findings.append(processed_result)

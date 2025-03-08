@@ -1,12 +1,13 @@
 """
-Logging utilities.
+Logging utility functions.
 
-This module provides functions for setting up logging in the project.
+This module provides utility functions for setting up and configuring logging.
 """
 
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from typing import Optional, Union
 
 
@@ -18,50 +19,54 @@ def setup_logging(
     """Set up logging configuration.
 
     Args:
-        log_level: The logging level. Can be a string (e.g., 'INFO') or an int (e.g., logging.INFO).
-        log_file: Optional path to a log file. If not provided, logs will be output to console only.
+        log_level: The log level to use. Can be a string (e.g., 'INFO') or an int.
+        log_file: Optional path to a log file. If not provided, logs will be output to stdout only.
         log_format: Optional custom log format. If not provided, a default format will be used.
 
     Returns:
-        The configured logger.
+        A configured logger instance.
     """
-    # Convert string log level to numeric if necessary
+    # Convert string log level to numeric value if needed
     if isinstance(log_level, str):
         log_level = getattr(logging, log_level.upper())
 
-    # Set up default log format if not provided
+    # Default log format
     if log_format is None:
-        log_format = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     # Configure root logger
-    logger = logging.getLogger()
-    logger.setLevel(log_level)
-    
-    # Clear existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    # Remove existing handlers to avoid duplicate logs
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
 
     # Create formatter
     formatter = logging.Formatter(log_format)
 
-    # Set up console handler
+    # Add console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    root_logger.addHandler(console_handler)
 
-    # Set up file handler if log file is provided
+    # Add file handler if log_file is provided
     if log_file:
         # Create log directory if it doesn't exist
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
-        file_handler = logging.FileHandler(log_file)
+        # Use rotating file handler to prevent log files from growing too large
+        file_handler = RotatingFileHandler(
+            log_file, maxBytes=10 * 1024 * 1024, backupCount=5
+        )
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+        root_logger.addHandler(file_handler)
 
+    # Create and return main logger for the application
+    logger = logging.getLogger("deep_research")
+    logger.debug("Logging initialized.")
     return logger
 
 
@@ -69,9 +74,9 @@ def get_logger(name: str) -> logging.Logger:
     """Get a logger with the specified name.
 
     Args:
-        name: The name of the logger.
+        name: The name for the logger.
 
     Returns:
-        The logger.
+        A logger instance.
     """
-    return logging.getLogger(name) 
+    return logging.getLogger(f"deep_research.{name}") 
