@@ -122,6 +122,37 @@ poetry run pytest
 poetry run pytest --cov=src
 ```
 
+## 🛠️ Development
+
+This project includes a Makefile to simplify common development tasks:
+
+```bash
+# Show available commands
+make help
+
+# Run all tests
+make test
+
+# Run tests for specific components
+make test-tools
+make test-python-runner
+
+# Run linting checks
+make lint
+
+# Format code
+make format
+
+# Generate coverage report
+make coverage
+
+# Clean build artifacts
+make clean
+
+# Run pre-commit hooks
+make pre-commit
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
