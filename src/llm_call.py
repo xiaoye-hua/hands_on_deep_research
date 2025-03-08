@@ -31,8 +31,8 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
     if model not in open_ai_model_name_list:
         logger.debug(f"Using custom API endpoint for model: {model}")
         openai_api_key = "EMPTY"
-        # openai_api_base = 'http://localhost:11434/v1/'
-        openai_api_base = 'http://34.240.68.65:80/v1'
+        openai_api_base = 'http://localhost:11434/v1/'
+        # openai_api_base = 'http://34.240.68.65:80/v1'
         client = OpenAI(
             api_key=openai_api_key,
             base_url=openai_api_base,
@@ -52,7 +52,7 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
                         "content": prompt
                     }
                 ]
-                # , reasoning_effort="high", 
+                , stop=["Observation:"] # Let's stop before any actual function is called
             )
         response = completion.choices[0].message.content
         logger.debug(f"Received response from LLM: {response[:100]}...")

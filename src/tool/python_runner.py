@@ -15,8 +15,12 @@ class PythonRunner(BaseTool):
         }
         self.logger.debug(f"PythonRunner initialized with parameters: {self.parameters}")
     
-    def run(self, input: dict) -> dict:
-        code = input.get("code")
+    def run(self, code: str) -> dict:
+        predefined_code = """
+def final_answer(answer: str) -> str:
+    print(f"Final answer: {answer}")
+        """
+        code = predefined_code + "\n" + code
         if not code:
             self.logger.error("No code provided to PythonRunner")
             raise ValueError("No code provided")
@@ -31,16 +35,16 @@ class PythonRunner(BaseTool):
         
         try:
             self.logger.debug("Executing code")
-            exec(code)
+            # Execute the code and capture any print statements
+            exec(code, {}, {})
+            # Get the captured output
             output = new_stdout.getvalue()
             self.logger.debug(f"Code execution completed, output: {output[:100]}...")
-            return {"output": output}
+            return output
         except Exception as e:
             error_msg = f"Error running code: {e}"
             self.logger.error(error_msg, exc_info=True)
-            raise ValueError(error_msg)
-        finally:
-            # Restore stdout
-            sys.stdout = old_stdout
-            self.logger.debug("Restored stdout after code execution")
+            # raise ValueError(error_msg)
+            return error_msg
+
     
