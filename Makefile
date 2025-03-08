@@ -1,4 +1,4 @@
-.PHONY: help install test lint format clean docs coverage pre-commit run test-tools test-python-runner
+.PHONY: help install test lint format clean docs coverage pre-commit run test-tools test-python-runner test-code-agent coverage-code-agent
 
 # Default target
 help:
@@ -15,6 +15,8 @@ help:
 	@echo "  make coverage           - Run tests with coverage"
 	@echo "  make pre-commit         - Run pre-commit hooks"
 	@echo "  make run                - Run the application"
+	@echo "  make test-code-agent    - Run tests for CodeAgent"
+	@echo "  make coverage-code-agent - Run coverage for CodeAgent"
 
 # Install dependencies
 install:
@@ -75,3 +77,14 @@ pre-commit:
 # Run the application
 run:
 	poetry run python -m src 
+
+# Run tests for CodeAgent
+test-code-agent:
+	@echo "Running tests for CodeAgent..."
+	python -m unittest tests/unit/agent/test_code_agent.py
+
+# Run coverage for CodeAgent
+coverage-code-agent:
+	@echo "Running coverage for CodeAgent..."
+	python -m coverage run -m unittest tests/unit/agent/test_code_agent.py
+	python -m coverage report -m 
