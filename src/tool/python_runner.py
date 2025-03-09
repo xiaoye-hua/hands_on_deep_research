@@ -15,18 +15,29 @@ class PythonRunner(BaseTool):
         }
         self.logger.debug(f"PythonRunner initialized with parameters: {self.parameters}")
     
-    def run(self, code: str) -> dict:
-        predefined_code = """
-def final_answer(answer: str) -> str:
-    print(f"Final answer: {answer}")
+    def run(self, input: dict) -> dict:
         """
-        code = predefined_code + "\n" + code
+        Run Python code and return the output.
+        
+        Args:
+            input: A dictionary containing the code to run.
+            
+        Returns:
+            A dictionary containing the output of the code execution.
+        """
+        code = input.get("code")
         if not code:
             self.logger.error("No code provided to PythonRunner")
             raise ValueError("No code provided")
         
+        predefined_code = """
+def final_answer(answer):
+    print(f"Final answer: {answer}")
+        """
+        code_to_run = predefined_code + "\n" + code
+        
         self.logger.info("Running Python code")
-        self.logger.debug(f"Code to run: {code[:100]}...")
+        self.logger.debug(f"Code to run: {code_to_run[:100]}...")
         
         # Capture stdout
         old_stdout = sys.stdout
@@ -36,15 +47,30 @@ def final_answer(answer: str) -> str:
         try:
             self.logger.debug("Executing code")
             # Execute the code and capture any print statements
-            exec(code, {}, {})
+            exec(code_to_run, {}, {})
             # Get the captured output
             output = new_stdout.getvalue()
             self.logger.debug(f"Code execution completed, output: {output[:100]}...")
-            return output
+            return {"output": output, "success": True}
         except Exception as e:
             error_msg = f"Error running code: {e}"
             self.logger.error(error_msg, exc_info=True)
-            # raise ValueError(error_msg)
-            return error_msg
+            return {"output": error_msg, "success": False}
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
+            self.logger.debug("Restored stdout after code execution")
+    
+    def forward(self, input: dict) -> dict:
+        """
+        Forward method to maintain compatibility with other frameworks.
+        
+        Args:
+            input: A dictionary containing the code to run.
+            
+        Returns:
+            The result of the run method.
+        """
+        return self.run(input)
 
     

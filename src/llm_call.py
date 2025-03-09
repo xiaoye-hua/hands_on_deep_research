@@ -1,9 +1,31 @@
 from openai import OpenAI
 import re
 from src.utils.logging_utils import get_logger
+from dotenv import load_dotenv
+import os
 
 # Set up logger
 logger = get_logger("src.llm_call")
+
+# Try to load environment variables from .env file
+load_dotenv()
+
+# Check if Langfuse is available and configured
+try:
+    from langfuse import Langfuse
+    LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY")
+    LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY")
+    
+    if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+        langfuse = Langfuse()
+        LANGFUSE_ENABLED = True
+        logger.info("Langfuse tracking enabled")
+    else:
+        LANGFUSE_ENABLED = False
+        logger.info("Langfuse tracking disabled: missing API keys")
+except ImportError:
+    LANGFUSE_ENABLED = False
+    logger.info("Langfuse tracking disabled: package not installed")
 
 def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str:
     """
@@ -12,7 +34,7 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
     Args:
         prompt (str): The user prompt to send to the model.
         system_prompt (str, optional): The system prompt to send to the model. Defaults to "".
-        model (str, optional): The model to use for the call. Defaults to "claude-3-5-sonnet-20241022".
+        model (str, optional): The model to use for the call. Defaults to "gpt-3.5-turbo".
 
     Returns:
         str: The response from the language model.
@@ -25,9 +47,10 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
     open_ai_model_name_list = [
         'o3-mini',
         'gpt-3.5-turbo',
-                                'gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-08-06', 
-                                'gpt-4o-2024-05-13', 'gpt-4o-2024-02-15', 'gpt-4o-2024-02-15', 'gpt-4o-2024-02-15', 
-                                'gpt-4o-2024-02-15', ]
+        'gpt-4o', 'gpt-4o-mini', 'gpt-4o-2024-08-06', 
+        'gpt-4o-2024-05-13', 'gpt-4o-2024-02-15', 'gpt-4o-2024-02-15', 'gpt-4o-2024-02-15', 
+        'gpt-4o-2024-02-15', ]
+    
     if model not in open_ai_model_name_list:
         logger.debug(f"Using custom API endpoint for model: {model}")
         openai_api_key = "EMPTY"
@@ -40,21 +63,48 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
     else:
         logger.debug("Using default OpenAI client")
         client = OpenAI()
-    
+
     try:
         logger.debug("Sending request to LLM API")
+        
+        # Initialize Langfuse tracking if enabled
+        generation = None
+        if LANGFUSE_ENABLED:
+            try:
+                generation = langfuse.generation(
+                    name=f"llm_call_{model}",
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize Langfuse tracking: {str(e)}")
+        
+        # Make the actual API call
         completion = client.chat.completions.create(
             model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-                , stop=["Observation:"] # Let's stop before any actual function is called
-            )
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            stop=["Observation:"]  # Let's stop before any actual function is called
+        )
+        
         response = completion.choices[0].message.content
+        
+        # Record the response in Langfuse if tracking is enabled
+        if LANGFUSE_ENABLED and generation:
+            try:
+                generation.end(output=response)
+                langfuse.flush()
+            except Exception as e:
+                logger.warning(f"Failed to record response in Langfuse: {str(e)}")
+        
         logger.debug(f"Received response from LLM: {response[:100]}...")
         return response
     except Exception as e:

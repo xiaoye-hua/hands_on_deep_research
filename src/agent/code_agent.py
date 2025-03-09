@@ -28,67 +28,127 @@ class CodeAgent(BaseAgent):
             response = self.query_llm(prompt)
             self.logger.info(f"Received response from LLM:")
             self.logger.info(f"Response: {response}")
-            codes = self.extract_codes(response)
-            # Run the code and capture the output
-            observation = self.python_runner.run(codes)
-            final_answer = self.extract_final_answer(observation)
-            # self.logger.debug(f"Code execution output: {observation}")
+            
+            try:
+                codes = self.extract_codes(response)
+                if codes:
+                    # Run the code and capture the output
+                    observation = self.get_observation(codes)
+                    final_answer = self.extract_final_answer(observation)
+                    self.logger.debug(f"Code execution output: {observation}")
+                else:
+                    observation = "No valid code found in the response."
+                    self.logger.warning("No valid code found in the response")
+            except Exception as e:
+                observation = f"Error: {str(e)}"
+                self.logger.error(f"Error processing response: {str(e)}", exc_info=True)
+            
             prompt = prompt + response + "\n" + f"Observation: {observation}" + '\n'
-        self.logger.info(f"Final answer: {final_answer}")
-        # code = self.query_llm(prompt)
-        # self.logger.info(f"Received code from LLM: {code}")
+            step += 1
+            
+        result = {
+            "final_answer": final_answer,
+            "steps": step,
+            "success": final_answer is not None
+        }
+        self.logger.info(f"Final result: {result}")
+        return result
     
     def extract_final_answer(self, observation: str) -> str:
-        if "Final answer" in observation:
-            return observation.split("final answer:")[1].strip().replace("```", "").replace("\n", "")
+        """
+        Extracts the final answer from the observation.
+        
+        Args:
+            observation: The observation string containing the final answer.
+            
+        Returns:
+            The extracted final answer, or None if no final answer is found.
+        """
+        self.logger.debug(f"Extracting final answer from: {observation[:100]}...")
+        
+        # Try to match "Final answer: <answer>" pattern
+        final_answer_pattern = r"Final answer: (.*?)(?:\n|$)"
+        match = re.search(final_answer_pattern, observation, re.IGNORECASE)
+        
+        if match:
+            final_answer = match.group(1).strip()
+            self.logger.info(f"Extracted final answer: {final_answer}")
+            return final_answer
+            
+        # If no final answer found, check if the observation itself is a simple value
+        if observation and len(observation.strip().split('\n')) == 1:
+            self.logger.info(f"Using observation as final answer: {observation.strip()}")
+            return observation.strip()
+            
+        self.logger.warning("No final answer found in observation")
         return None
     
-    def extract_codes(self, code_blob: str) -> List[str]:
-        """Parses the LLM's output to get any code blob inside. Will return the code directly if it's code."""
+    def extract_codes(self, code_blob: str) -> str:
+        """
+        Parses the LLM's output to get any code blob inside.
+        
+        Args:
+            code_blob: The LLM's response containing code.
+            
+        Returns:
+            The extracted code.
+        """
+        self.logger.debug(f"Extracting code from: {code_blob[:100]}...")
+        
+        # Try to extract code between ```py and ``` or ```python and ```
         pattern = r"```(?:py|python)?\n(.*?)\n```"
         matches = re.findall(pattern, code_blob, re.DOTALL)
-        if len(matches) == 0:
-            try:  # Maybe the LLM outputted a code blob directly
-                ast.parse(code_blob)
-                return code_blob
-            except SyntaxError:
-                pass
-
-            if "final" in code_blob and "answer" in code_blob:
-                raise ValueError(
-                    f"""
-    Your code snippet is invalid, because the regex pattern {pattern} was not found in it.
-    Here is your code snippet:
-    {code_blob}
-    It seems like you're trying to return the final answer, you can do it as follows:
-    Code:
-    ```py
-    final_answer("YOUR FINAL ANSWER HERE")
-    ```<end_code>""".strip()
-                )
-            raise ValueError(
-                f"""
-    Your code snippet is invalid, because the regex pattern {pattern} was not found in it.
-    Here is your code snippet:
-    {code_blob}
-    Make sure to include code with the correct pattern, for instance:
-    Thoughts: Your thoughts
-    Code:
-    ```py
-    # Your python code here
-    ```<end_code>""".strip()
-            )
-        return "\n\n".join(match.strip() for match in matches)
-    
-    def get_observation(self, codes: List[str]) -> str:
-        return codes
-
-    
         
+        if matches:
+            extracted_code = "\n\n".join(match.strip() for match in matches)
+            self.logger.debug(f"Extracted code: {extracted_code[:100]}...")
+            return extracted_code
+        
+        # If no code blocks found, try to extract code after "Code:" or "code:"
+        code_pattern = r"(?:Code:|code:)\s*\n(.*?)(?:\n\s*(?:Observation:|<end_code>|$))"
+        code_matches = re.findall(code_pattern, code_blob, re.DOTALL)
+        
+        if code_matches:
+            extracted_code = "\n\n".join(match.strip() for match in code_matches)
+            self.logger.debug(f"Extracted code after 'Code:': {extracted_code[:100]}...")
+            return extracted_code
+            
+        # If still no code found, try to parse the entire response as code
+        try:
+            ast.parse(code_blob)
+            self.logger.debug("Entire response parsed as code")
+            return code_blob
+        except SyntaxError:
+            self.logger.warning("No valid code found in response")
+            
+        # If we get here, no valid code was found
+        self.logger.warning(f"No code found in response: {code_blob}")
+        return None
+    
+    def get_observation(self, codes: str) -> str:
+        """
+        Gets the observation from running the code.
+        
+        Args:
+            codes: The code to run.
+            
+        Returns:
+            The observation from running the code.
+        """
+        if not codes:
+            return "No valid code found in the response."
+            
+        try:
+            result = self.python_runner.run({"code": codes})
+            return result.get("output", "No output from code execution.")
+        except Exception as e:
+            error_msg = f"Error running code: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return error_msg
     
     def query_llm(self, prompt: str) -> str:
-        # model_id = "gpt-3.5-turbo"
-        model_id = 'qwen2.5:1.5b'
+        model_id = "gpt-3.5-turbo"
+        # model_id = 'qwen2.5:1.5b'
         self.logger.info(f"Querying LLM with model: {model_id}")
         # self.logger.debug(f"LLM prompt: {prompt[:100]}...")
         
