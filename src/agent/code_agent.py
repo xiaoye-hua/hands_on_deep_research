@@ -147,8 +147,8 @@ class CodeAgent(BaseAgent):
             return error_msg
     
     def query_llm(self, prompt: str) -> str:
-        model_id = "gpt-3.5-turbo"
-        # model_id = 'qwen2.5:1.5b'
+        # model_id = "gpt-3.5-turbo"
+        model_id = 'qwen2.5:1.5b'
         self.logger.info(f"Querying LLM with model: {model_id}")
         # self.logger.debug(f"LLM prompt: {prompt[:100]}...")
         

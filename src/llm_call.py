@@ -73,6 +73,7 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
             try:
                 generation = langfuse.generation(
                     name=f"llm_call_{model}",
+                    input=prompt,
                     model=model,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -100,6 +101,16 @@ def llm_call(prompt: str, system_prompt: str = "", model="gpt-3.5-turbo") -> str
         # Record the response in Langfuse if tracking is enabled
         if LANGFUSE_ENABLED and generation:
             try:
+                # Add metadata to the generation
+                # generation.update(
+                #     metadata={
+                #         "model": model,
+                #         "prompt_length": len(prompt),
+                #         "response_length": len(response),
+                #         "system_prompt_length": len(system_prompt),
+                #         "timestamp": datetime.datetime.now().isoformat()
+                #     }
+                # )
                 generation.end(output=response)
                 langfuse.flush()
             except Exception as e:
